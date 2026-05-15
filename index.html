@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IoT Jarak Jauh + 4 Timer (Saved State)</title>
+    <title>IoT Jarak Jauh + Sinkronisasi Jadwal Realtime</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; padding: 10px; background-color: #f4f4f9; }
@@ -29,7 +29,6 @@
 </head>
 <body>
 
-    <!-- KARTU 1: MANUAL & MONITOR -->
     <div class="card">
         <h2>🌐 Kontrol Jarak Jauh (MQTT)</h2>
         <div class="clock-box" id="live-clock">00:00:00</div>
@@ -49,10 +48,9 @@
         </div>
     </div>
 
-    <!-- KARTU 2: SETINGAN JADWAL (NILAI TETAP MEMBEKU / DIINGAT) -->
     <div class="card">
         <h3>⚙️ Pengaturan 4 Set Jadwal Lampu</h3>
-        <p style="font-size: 12px; color: #666; margin-top: 0;">Waktu otomatis tersimpan aman di browser Anda</p>
+        <p style="font-size: 12px; color: #666; margin-top: 0;" id="sync-text">Sinkronisasi jadwal dengan alat...</p>
         <hr>
         
         <form id="timer-form" onsubmit="simpanJadwal(event)">
@@ -90,30 +88,17 @@
             const detik = String(sekarang.getSeconds()).padStart(2, '0');
             document.getElementById('live-clock').innerText = `${jam}:${menit}:${detik}`;
             const opsi = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            document.getElementById('live-date').innerText = sekarang.toLocaleDateString('id-ID', opsi);
+            document.getElementById('live-date').innerText = Clinical= sekarang.toLocaleDateString('id-ID', opsi);
         }
         setInterval(updateJam, 1000);
         updateJam();
 
-        // --- FUNGSI UTAMAKAN MEMBACA MEMORI LOKAL BROWSER ---
-        function muatJadwalTersimpan() {
-            for(let i = 1; i <= 4; i++) {
-                if(localStorage.getItem(`on${i}`)) {
-                    document.getElementById(`on${i}`).value = localStorage.getItem(`on${i}`);
-                }
-                if(localStorage.getItem(`off${i}`)) {
-                    document.getElementById(`off${i}`).value = localStorage.getItem(`off${i}`);
-                }
-            }
-        }
-        // Panggil fungsi muat waktu saat halaman pertama kali dibuka sebelum MQTT connect
-        muatJadwalTersimpan();
-
         // --- MQTT CONFIG ---
         const topikKontrol = "nepanled1";
         const topikStatus = "nepanled1/status"; 
-        const brokerUrl = "wss://broker.hivemq.com:8884/mqtt"; 
+        const topikJadwalStatus = "nepanled1/jadwal_status"; // Topik khusus kiriman jadwal dari ESP
         
+        const brokerUrl = "wss://broker.hivemq.com:8884/mqtt"; 
         const clientId = "client_gh_" + Math.random().toString(16).substr(2, 8);
         const client = mqtt.connect(brokerUrl, { clientId: clientId });
 
@@ -122,7 +107,7 @@
         const statusDisplay = document.getElementById('status-display');
 
         client.on('connect', () => {
-            statusDisplay.innerText = "Terhubung! Menyinkronkan alat...";
+            statusDisplay.innerText = "Terhubung! Mengambil data realtime...";
             statusDisplay.style.backgroundColor = "#d1ecf1";
             statusDisplay.style.color = "#0c5460";
             
@@ -130,23 +115,28 @@
             document.getElementById('btn-mati').disabled = false;
             document.getElementById('btn-save').disabled = false;
             
+            // Subscribe ke status lampu dan status jadwal dari alat
             client.subscribe(topikStatus);
+            client.subscribe(topikJadwalStatus);
+            
+            // Minta data terbaru ke ESP8266
             client.publish(topikKontrol, "STATUS_REQ"); 
         });
 
         client.on('message', (topic, message) => {
+            const pesan = message.toString();
+            
+            // 1. Menerima Status Lampu Realtime
             if (topic === topikStatus) {
-                const statusAlat = message.toString();
                 const jamSekarang = document.getElementById('live-clock').innerText;
-                
-                if (statusAlat === 'ON') {
+                if (pesan === 'ON') {
                     dotElement.className = 'indicator-dot status-on';
                     textElement.innerText = "STATUS: ON";
                     textElement.style.color = "#28a745";
                     statusDisplay.innerText = `Lampu Menyala (Jam ${jamSekarang})`;
                     statusDisplay.style.backgroundColor = "#d4edda";
                     statusDisplay.style.color = "#155724";
-                } else if (statusAlat === 'OFF') {
+                } else if (pesan === 'OFF') {
                     dotElement.className = 'indicator-dot status-off';
                     textElement.innerText = "STATUS: OFF";
                     textElement.style.color = "#dc3545";
@@ -155,40 +145,45 @@
                     statusDisplay.style.color = "#721c24";
                 }
             }
+            
+            // 2. Menerima Pengaturan Jadwal Realtime Aktif dari Alat (Mengisi Form Otomatis)
+            if (topic === topikJadwalStatus && pesan.startsWith("JADWAL")) {
+                const bagian = pesan.split("|"); // Bongkar data teks format JADWAL|on1|off1...
+                let indexData = 1;
+                
+                for(let i = 1; i <= 4; i++) {
+                    const isiOn = bagian[indexData++];
+                    const isiOff = bagian[indexData++];
+                    
+                    document.getElementById(`on${i}`).value = (isiOn === "--:--") ? "" : isiOn;
+                    document.getElementById(`off${i}`).value = (isiOff === "--:--") ? "" : isiOff;
+                }
+                document.getElementById("sync-text").innerText = "⚙️ Jadwal Sinkron 100% dengan Alat!";
+                document.getElementById("sync-text").style.color = "#28a745";
+            }
         });
 
         function kirimPerintah(perintah) {
             if (client.connected) {
-                statusDisplay.innerText = "Memproses perintah manual...";
                 client.publish(topikKontrol, perintah);
             }
         }
 
-        // --- SIMPAN JADWAL KE HARDDISK BROWSER & KIRIM MQTT ---
         function simpanJadwal(event) {
             event.preventDefault();
-            if (!client.connected) {
-                alert("Gagal, koneksi internet terputus!");
-                return;
-            }
+            if (!client.connected) return;
 
             let dataJadwal = "JADWAL";
             for(let i = 1; i <= 4; i++) {
                 let waktuOn = document.getElementById(`on${i}`).value || "--:--";
                 let waktuOff = document.getElementById(`off${i}`).value || "--:--";
                 dataJadwal += `|${waktuOn}|${waktuOff}`;
-
-                // Proses simpan permanen di browser internet user
-                localStorage.setItem(`on${i}`, waktuOn);
-                localStorage.setItem(`off${i}`, waktuOff);
             }
 
-            // Publish dengan parameter { retain: true } agar broker MQTT menyimpan salinan jadwal terakhir
+            // Kirim jadwal baru ke ESP, pakai retain agar tersimpan di broker cloud
             client.publish(topikKontrol, dataJadwal, { qos: 1, retain: true });
-            
-            statusDisplay.innerText = "Jadwal Disimpan Permanen & Dikirim!";
-            statusDisplay.style.backgroundColor = "#d4edda";
-            statusDisplay.style.color = "#155724";
+            document.getElementById("sync-text").innerText = "Mengirim jadwal baru...";
+            document.getElementById("sync-text").style.color = "#007bff";
         }
     </script>
 </body>
