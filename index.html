@@ -7,7 +7,16 @@
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; padding: 10px; background-color: #f4f4f9; }
         h2 { color: #333; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 400px; margin: auto; margin-bottom: 15px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 400px; margin: auto; margin-bottom: 15px; text-align: center; }
+        
+        /* Gaya Lampu Indikator */
+        .indicator-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 15px 0; font-weight: bold; font-size: 18px; }
+        .indicator-dot { width: 24px; height: 24px; border-radius: 50%; background-color: #7f8c8d; display: inline-block; box-shadow: 0 0 8px rgba(0,0,0,0.2); transition: background-color 0.3s ease, box-shadow 0.3s ease; }
+        
+        /* Warna Status Indikator */
+        .status-on { background-color: #28a745; box-shadow: 0 0 15px #28a745; }
+        .status-off { background-color: #dc3545; box-shadow: 0 0 15px #dc3545; }
+
         .btn { display: inline-block; width: 46%; padding: 14px; margin: 5px 2%; font-size: 16px; font-weight: bold; text-align: center; text-decoration: none; border-radius: 5px; color: white; cursor: pointer; border: none; }
         .btn-on { background-color: #28a745; }
         .btn-off { background-color: #dc3545; }
@@ -21,25 +30,48 @@
     <div class="card">
         <h2>💡 Kontrol Lampu (via GitHub)</h2>
         <hr>
-        <div class="status-box" id="status-display">Mengirim perintah langsung ke alat...</div>
+        
+        <!-- INDIKATOR LAMPU VISUAL -->
+        <div class="indicator-container">
+            <span id="lamp-dot" class="indicator-dot"></span>
+            <span id="lamp-text">STATUS: OFF</span>
+        </div>
+
+        <div class="status-box" id="status-display">Siap menerima perintah...</div>
         
         <div style="text-align: center;">
             <!-- PENTING: Ganti IP_ESP8266_KAMU dengan IP asli ESP8266 Anda -->
-            <button onclick="kontrolLampu('http://IP_ESP8266_KAMU/led/on')" class="btn btn-on">NYALAKAN</button>
-            <button onclick="kontrolLampu('http://IP_ESP8266_KAMU/led/off')" class="btn btn-off">MATIKAN</button>
+            <button onclick="kontrolLampu('http://IP_ESP8266_KAMU/led/on', 'ON')" class="btn btn-on">NYALAKAN</button>
+            <button onclick="kontrolLampu('http://IP_ESP8266_KAMU/led/off', 'OFF')" class="btn btn-off">MATIKAN</button>
         </div>
     </div>
 
     <script>
-        function kontrolLampu(url Aksi) {
+        // Set kondisi awal indikator saat pertama kali web dibuka (Merah / Off)
+        document.getElementById('lamp-dot').classList.add('status-off');
+
+        function kontrolLampu(urlAksi, statusTarget) {
             document.getElementById('status-display').innerText = "Memproses...";
             
-            // Menggunakan JavaScript Fetch untuk menembak IP ESP8266 secara background
             fetch(urlAksi, { mode: 'no-cors' })
             .then(() => {
                 document.getElementById('status-display').innerText = "Perintah Berhasil Dikirim!";
                 document.getElementById('status-display').style.backgroundColor = "#d4edda";
                 document.getElementById('status-display').style.color = "#155724";
+                
+                // Mengubah warna lampu indikator berdasarkan tombol yang diklik
+                const dotElement = document.getElementById('lamp-dot');
+                const textElement = document.getElementById('lamp-text');
+                
+                if (statusTarget === 'ON') {
+                    dotElement.className = 'indicator-dot status-on';
+                    textElement.innerText = "STATUS: ON";
+                    textElement.style.color = "#28a745";
+                } else {
+                    dotElement.className = 'indicator-dot status-off';
+                    textElement.innerText = "STATUS: OFF";
+                    textElement.style.color = "#dc3545";
+                }
             })
             .catch(err => {
                 document.getElementById('status-display').innerText = "Gagal Terhubung ke ESP8266";
