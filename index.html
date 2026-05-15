@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IoT Jarak Jauh + 4 Timer Otomatis</title>
+    <title>IoT Jarak Jauh + 4 Timer (Saved State)</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; padding: 10px; background-color: #f4f4f9; }
@@ -22,7 +22,6 @@
         .btn:hover { opacity: 0.9; }
         .status-box { padding: 15px; border-radius: 6px; font-weight: bold; margin-bottom: 15px; text-align: center; background-color: #e2e3e5; color: #383d41; }
         
-        /* Gaya Baris Input Jadwal */
         .timer-row { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #007bff; }
         .timer-row span { font-weight: bold; font-size: 14px; }
         .timer-row input[type="time"] { padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
@@ -30,7 +29,7 @@
 </head>
 <body>
 
-    <!-- KARTU 1: KONTROL MANUAL & MONITORING -->
+    <!-- KARTU 1: MANUAL & MONITOR -->
     <div class="card">
         <h2>🌐 Kontrol Jarak Jauh (MQTT)</h2>
         <div class="clock-box" id="live-clock">00:00:00</div>
@@ -50,32 +49,28 @@
         </div>
     </div>
 
-    <!-- KARTU 2: PENGATURAN 4 SET TIMER -->
+    <!-- KARTU 2: SETINGAN JADWAL (NILAI TETAP MEMBEKU / DIINGAT) -->
     <div class="card">
         <h3>⚙️ Pengaturan 4 Set Jadwal Lampu</h3>
-        <p style="font-size: 12px; color: #666; margin-top: 0;">Kosongkan jika jadwal tidak ingin digunakan</p>
+        <p style="font-size: 12px; color: #666; margin-top: 0;">Waktu otomatis tersimpan aman di browser Anda</p>
         <hr>
         
         <form id="timer-form" onsubmit="simpanJadwal(event)">
-            <!-- Set 1 -->
             <div class="timer-row">
                 <span>Set 1</span>
                 <label>ON: <input type="time" id="on1"></label>
                 <label>OFF: <input type="time" id="off1"></label>
             </div>
-            <!-- Set 2 -->
             <div class="timer-row">
                 <span>Set 2</span>
                 <label>ON: <input type="time" id="on2"></label>
                 <label>OFF: <input type="time" id="off2"></label>
             </div>
-            <!-- Set 3 -->
             <div class="timer-row">
                 <span>Set 3</span>
                 <label>ON: <input type="time" id="on3"></label>
                 <label>OFF: <input type="time" id="off3"></label>
             </div>
-            <!-- Set 4 -->
             <div class="timer-row">
                 <span>Set 4</span>
                 <label>ON: <input type="time" id="on4"></label>
@@ -99,6 +94,20 @@
         }
         setInterval(updateJam, 1000);
         updateJam();
+
+        // --- FUNGSI UTAMAKAN MEMBACA MEMORI LOKAL BROWSER ---
+        function muatJadwalTersimpan() {
+            for(let i = 1; i <= 4; i++) {
+                if(localStorage.getItem(`on${i}`)) {
+                    document.getElementById(`on${i}`).value = localStorage.getItem(`on${i}`);
+                }
+                if(localStorage.getItem(`off${i}`)) {
+                    document.getElementById(`off${i}`).value = localStorage.getItem(`off${i}`);
+                }
+            }
+        }
+        // Panggil fungsi muat waktu saat halaman pertama kali dibuka sebelum MQTT connect
+        muatJadwalTersimpan();
 
         // --- MQTT CONFIG ---
         const topikKontrol = "nepanled1";
@@ -155,7 +164,7 @@
             }
         }
 
-        // --- FUNGSI MENGIRIM JADWAL TIMER KE BROKER ---
+        // --- SIMPAN JADWAL KE HARDDISK BROWSER & KIRIM MQTT ---
         function simpanJadwal(event) {
             event.preventDefault();
             if (!client.connected) {
@@ -163,17 +172,21 @@
                 return;
             }
 
-            // Ambil data dari semua kolom input waktu
             let dataJadwal = "JADWAL";
-            for(let i=1; i<=4; i++) {
+            for(let i = 1; i <= 4; i++) {
                 let waktuOn = document.getElementById(`on${i}`).value || "--:--";
                 let waktuOff = document.getElementById(`off${i}`).value || "--:--";
                 dataJadwal += `|${waktuOn}|${waktuOff}`;
+
+                // Proses simpan permanen di browser internet user
+                localStorage.setItem(`on${i}`, waktuOn);
+                localStorage.setItem(`off${i}`, waktuOff);
             }
 
-            // Mengirim data jadwal gabungan ke MQTT (Contoh format: JADWAL|07:00|08:00|--:--|--:--...)
+            // Publish dengan parameter { retain: true } agar broker MQTT menyimpan salinan jadwal terakhir
             client.publish(topikKontrol, dataJadwal, { qos: 1, retain: true });
-            statusDisplay.innerText = "Jadwal Baru Berhasil Dikirim ke Alat!";
+            
+            statusDisplay.innerText = "Jadwal Disimpan Permanen & Dikirim!";
             statusDisplay.style.backgroundColor = "#d4edda";
             statusDisplay.style.color = "#155724";
         }
