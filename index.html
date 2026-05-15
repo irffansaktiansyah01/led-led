@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kontrol IoT via GitHub Pages</title>
+    <title>Kontrol IoT Jarak Jauh via MQTT</title>
+    <!-- Memanggil Library MQTT.js agar Browser bisa pakai MQTT -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; padding: 10px; background-color: #f4f4f9; }
         h2 { color: #333; }
@@ -26,58 +28,87 @@
 </head>
 <body>
 
-    <!-- KARTU KONTROL LAMPU -->
     <div class="card">
-        <h2>💡 Kontrol Lampu (via GitHub)</h2>
+        <h2>🌐 Kontrol Jarak Jauh (MQTT)</h2>
         <hr>
         
         <!-- INDIKATOR LAMPU VISUAL -->
         <div class="indicator-container">
             <span id="lamp-dot" class="indicator-dot"></span>
-            <span id="lamp-text">STATUS: OFF</span>
+            <span id="lamp-text">STATUS: MEMBUKA KONEKSI...</span>
         </div>
 
-        <div class="status-box" id="status-display">Siap menerima perintah...</div>
+        <div class="status-box" id="status-display">Menghubungkan ke Broker HiveMQ...</div>
         
         <div style="text-align: center;">
-            <!-- PENTING: Ganti IP_ESP8266_KAMU dengan IP asli ESP8266 Anda -->
-            <button onclick="kontrolLampu('http://10.114.51.34/led/on', 'ON')" class="btn btn-on">NYALAKAN</button>
-            <button onclick="kontrolLampu('http://10.114.51.34/led/off', 'OFF')" class="btn btn-off">MATIKAN</button>
+            <button onclick="kirimPerintah('ON')" class="btn btn-on" id="btn-nyala" disabled>NYALAKAN</button>
+            <button onclick="kirimPerintah('OFF')" class="btn btn-off" id="btn-mati" disabled>MATIKAN</button>
         </div>
     </div>
 
     <script>
-        // Set kondisi awal indikator saat pertama kali web dibuka (Merah / Off)
-        document.getElementById('lamp-dot').classList.add('status-off');
+        const topik = "nepanled1";
+        // Menggunakan WebSockets port 8000 untuk HiveMQ Public Broker
+        const brokerUrl = "ws://broker.hivemq.com:8000/mqtt"; 
+        
+        // Membuat ID unik untuk browser klien
+        const clientId = "client_gh_" + Math.random().toString(16).substr(2, 8);
+        
+        // Mulai koneksi ke Broker HiveMQ
+        const client = mqtt.connect(brokerUrl, { clientId: clientId });
 
-        function kontrolLampu(urlAksi, statusTarget) {
-            document.getElementById('status-display').innerText = "Memproses...";
+        const dotElement = document.getElementById('lamp-dot');
+        const textElement = document.getElementById('lamp-text');
+        const statusDisplay = document.getElementById('status-display');
+
+        // Ketika web berhasil terhubung ke HiveMQ
+        client.on('connect', () => {
+            statusDisplay.innerText = "Terhubung ke Internet (HiveMQ)!";
+            statusDisplay.style.backgroundColor = "#d4edda";
+            statusDisplay.style.color = "#155724";
             
-            fetch(urlAksi, { mode: 'no-cors' })
-            .then(() => {
-                document.getElementById('status-display').innerText = "Perintah Berhasil Dikirim!";
-                document.getElementById('status-display').style.backgroundColor = "#d4edda";
-                document.getElementById('status-display').style.color = "#155724";
-                
-                // Mengubah warna lampu indikator berdasarkan tombol yang diklik
-                const dotElement = document.getElementById('lamp-dot');
-                const textElement = document.getElementById('lamp-text');
-                
-                if (statusTarget === 'ON') {
-                    dotElement.className = 'indicator-dot status-on';
-                    textElement.innerText = "STATUS: ON";
-                    textElement.style.color = "#28a745";
-                } else {
-                    dotElement.className = 'indicator-dot status-off';
-                    textElement.innerText = "STATUS: OFF";
-                    textElement.style.color = "#dc3545";
-                }
-            })
-            .catch(err => {
-                document.getElementById('status-display').innerText = "Gagal Terhubung ke ESP8266";
-                document.getElementById('status-display').style.backgroundColor = "#f8d7da";
-                document.getElementById('status-display').style.color = "#721c24";
-            });
+            // Aktifkan tombol kontrol
+            document.getElementById('btn-nyala').disabled = false;
+            document.getElementById('btn-mati').disabled = false;
+            
+            // Set tampilan awal menjadi OFF sebelum ada aksi
+            dotElement.className = 'indicator-dot status-off';
+            textElement.innerText = "STATUS: OFF";
+            textElement.style.color = "#dc3545";
+        });
+
+        // Jika koneksi terputus
+        client.on('error', (err) => {
+            statusDisplay.innerText = "Gagal terhubung ke Broker!";
+            statusDisplay.style.backgroundColor = "#f8d7da";
+            statusDisplay.style.color = "#721c24";
+            console.error(err);
+        });
+
+        // Fungsi mengirim data ke ESP8266 lewat MQTT
+        function kirimPerintah(perintah) {
+            if (client.connected) {
+                // Publish pesan ke topik nepanled1
+                client.publish(topik, perintah, { qos: 0, retain: false }, (err) => {
+                    if (!err) {
+                        statusDisplay.innerText = `Perintah ${perintah} Terkirim Jarak Jauh!`;
+                        
+                        if (perintah === 'ON') {
+                            dotElement.className = 'indicator-dot status-on';
+                            textElement.innerText = "STATUS: ON";
+                            textElement.style.color = "#28a745";
+                        } else {
+                            dotElement.className = 'indicator-dot status-off';
+                            textElement.innerText = "STATUS: OFF";
+                            textElement.style.color = "#dc3545";
+                        }
+                    } else {
+                        statusDisplay.innerText = "Gagal mengirim perintah.";
+                    }
+                });
+            } else {
+                statusDisplay.innerText = "Koneksi terputus, tidak bisa kirim perintah.";
+            }
         }
     </script>
 </body>
