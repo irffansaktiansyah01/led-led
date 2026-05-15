@@ -3,14 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kontrol IoT Jarak Jauh via MQTT</title>
-    <!-- Memanggil Library MQTT.js agar Browser bisa pakai MQTT -->
+    <title>Kontrol IoT Jarak Jauh + Realtime Clock</title>
+    <!-- Memanggil Library MQTT.js -->
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; padding: 10px; background-color: #f4f4f9; }
-        h2 { color: #333; }
+        h2 { color: #333; margin-bottom: 5px; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 400px; margin: auto; margin-bottom: 15px; text-align: center; }
         
+        /* Gaya Jam Realtime */
+        .clock-box { font-size: 28px; font-weight: bold; color: #2c3e50; background: #eec; padding: 10px; border-radius: 6px; margin: 10px 0; font-family: 'Courier New', Courier, monospace; border: 2px solid #bdc3c7; }
+        .date-box { font-size: 14px; color: #7f8c8d; margin-bottom: 15px; }
+
         /* Gaya Lampu Indikator */
         .indicator-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 15px 0; font-weight: bold; font-size: 18px; }
         .indicator-dot { width: 24px; height: 24px; border-radius: 50%; background-color: #7f8c8d; display: inline-block; box-shadow: 0 0 8px rgba(0,0,0,0.2); transition: background-color 0.3s ease, box-shadow 0.3s ease; }
@@ -30,12 +34,15 @@
 
     <div class="card">
         <h2>🌐 Kontrol Jarak Jauh (MQTT)</h2>
+        <!-- WAKTU REALTIME -->
+        <div class="clock-box" id="live-clock">00:00:00</div>
+        <div class="date-box" id="live-date">Memuat tanggal...</div>
         <hr>
         
         <!-- INDIKATOR LAMPU VISUAL -->
         <div class="indicator-container">
             <span id="lamp-dot" class="indicator-dot"></span>
-            <span id="lamp-text">STATUS: MEMBUKA KONEKSI...</span>
+            <span id="lamp-text">STATUS: MENGHUBUNGKAN...</span>
         </div>
 
         <div class="status-box" id="status-display">Menghubungkan ke Broker HiveMQ...</div>
@@ -47,51 +54,59 @@
     </div>
 
     <script>
+        // --- JALUR JAM REALTIME DIGITAL ---
+        function updateWaktu() {
+            const sekarang = new Date();
+            
+            // Format Jam (HH:MM:SS)
+            const jam = String(sekarang.getHours()).padStart(2, '0');
+            const menit = String(sekarang.getMinutes()).padStart(2, '0');
+            const detik = String(sekarang.getSeconds()).padStart(2, '0');
+            document.getElementById('live-clock').innerText = `${jam}:${menit}:${detik}`;
+            
+            // Format Tanggal
+            const opsi = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('live-date').innerText = sekarang.toLocaleDateString('id-ID', opsi);
+        }
+        setInterval(updateWaktu, 1000); // Update setiap 1 detik
+        updateWaktu(); // Jalankan sekali di awal
+
+        // --- JALUR MQTT KONTROL ---
         const topik = "nepanled1";
-        // Menggunakan WebSockets port 8000 untuk HiveMQ Public Broker
+        // Diperbarui menggunakan WSS (Port 8884) agar lolos blokir HTTPS GitHub Pages
         const brokerUrl = "wss://broker.hivemq.com:8884/mqtt"; 
         
-        // Membuat ID unik untuk browser klien
         const clientId = "client_gh_" + Math.random().toString(16).substr(2, 8);
-        
-        // Mulai koneksi ke Broker HiveMQ
         const client = mqtt.connect(brokerUrl, { clientId: clientId });
 
         const dotElement = document.getElementById('lamp-dot');
         const textElement = document.getElementById('lamp-text');
         const statusDisplay = document.getElementById('status-display');
 
-        // Ketika web berhasil terhubung ke HiveMQ
         client.on('connect', () => {
             statusDisplay.innerText = "Terhubung ke Internet (HiveMQ)!";
             statusDisplay.style.backgroundColor = "#d4edda";
             statusDisplay.style.color = "#155724";
             
-            // Aktifkan tombol kontrol
             document.getElementById('btn-nyala').disabled = false;
             document.getElementById('btn-mati').disabled = false;
             
-            // Set tampilan awal menjadi OFF sebelum ada aksi
             dotElement.className = 'indicator-dot status-off';
             textElement.innerText = "STATUS: OFF";
             textElement.style.color = "#dc3545";
         });
 
-        // Jika koneksi terputus
         client.on('error', (err) => {
-            statusDisplay.innerText = "Gagal terhubung ke Broker!";
+            statusDisplay.innerText = "Gagal koneksi secure ke Broker!";
             statusDisplay.style.backgroundColor = "#f8d7da";
             statusDisplay.style.color = "#721c24";
-            console.error(err);
         });
 
-        // Fungsi mengirim data ke ESP8266 lewat MQTT
         function kirimPerintah(perintah) {
             if (client.connected) {
-                // Publish pesan ke topik nepanled1
                 client.publish(topik, perintah, { qos: 0, retain: false }, (err) => {
                     if (!err) {
-                        statusDisplay.innerText = `Perintah ${perintah} Terkirim Jarak Jauh!`;
+                        statusDisplay.innerText = `Perintah ${perintah} Terkirim Jam ${document.getElementById('live-clock').innerText}`;
                         
                         if (perintah === 'ON') {
                             dotElement.className = 'indicator-dot status-on';
@@ -103,11 +118,11 @@
                             textElement.style.color = "#dc3545";
                         }
                     } else {
-                        statusDisplay.innerText = "Gagal mengirim perintah.";
+                        statusDisplay.innerText = "Gagal mengirim data.";
                     }
                 });
             } else {
-                statusDisplay.innerText = "Koneksi terputus, tidak bisa kirim perintah.";
+                statusDisplay.innerText = "Koneksi terputus!";
             }
         }
     </script>
