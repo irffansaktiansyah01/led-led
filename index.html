@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kontrol IoT Jarak Jauh Realtime Feedback</title>
+    <title>IoT Jarak Jauh + 4 Timer Otomatis</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; padding: 10px; background-color: #f4f4f9; }
-        h2 { color: #333; margin-bottom: 5px; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 400px; margin: auto; margin-bottom: 15px; text-align: center; }
+        h2, h3 { color: #333; margin: 5px 0; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 440px; margin: auto; margin-bottom: 15px; text-align: center; }
         .clock-box { font-size: 28px; font-weight: bold; color: #2c3e50; background: #eec; padding: 10px; border-radius: 6px; margin: 10px 0; font-family: 'Courier New', Courier, monospace; border: 2px solid #bdc3c7; }
         .date-box { font-size: 14px; color: #7f8c8d; margin-bottom: 15px; }
         .indicator-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 15px 0; font-weight: bold; font-size: 18px; }
@@ -18,12 +18,19 @@
         .btn { display: inline-block; width: 46%; padding: 14px; margin: 5px 2%; font-size: 16px; font-weight: bold; text-align: center; text-decoration: none; border-radius: 5px; color: white; cursor: pointer; border: none; }
         .btn-on { background-color: #28a745; }
         .btn-off { background-color: #dc3545; }
+        .btn-submit { background-color: #007bff; width: 96%; margin-top: 15px; }
         .btn:hover { opacity: 0.9; }
         .status-box { padding: 15px; border-radius: 6px; font-weight: bold; margin-bottom: 15px; text-align: center; background-color: #e2e3e5; color: #383d41; }
+        
+        /* Gaya Baris Input Jadwal */
+        .timer-row { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #007bff; }
+        .timer-row span { font-weight: bold; font-size: 14px; }
+        .timer-row input[type="time"] { padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
     </style>
 </head>
 <body>
 
+    <!-- KARTU 1: KONTROL MANUAL & MONITORING -->
     <div class="card">
         <h2>🌐 Kontrol Jarak Jauh (MQTT)</h2>
         <div class="clock-box" id="live-clock">00:00:00</div>
@@ -43,10 +50,45 @@
         </div>
     </div>
 
+    <!-- KARTU 2: PENGATURAN 4 SET TIMER -->
+    <div class="card">
+        <h3>⚙️ Pengaturan 4 Set Jadwal Lampu</h3>
+        <p style="font-size: 12px; color: #666; margin-top: 0;">Kosongkan jika jadwal tidak ingin digunakan</p>
+        <hr>
+        
+        <form id="timer-form" onsubmit="simpanJadwal(event)">
+            <!-- Set 1 -->
+            <div class="timer-row">
+                <span>Set 1</span>
+                <label>ON: <input type="time" id="on1"></label>
+                <label>OFF: <input type="time" id="off1"></label>
+            </div>
+            <!-- Set 2 -->
+            <div class="timer-row">
+                <span>Set 2</span>
+                <label>ON: <input type="time" id="on2"></label>
+                <label>OFF: <input type="time" id="off2"></label>
+            </div>
+            <!-- Set 3 -->
+            <div class="timer-row">
+                <span>Set 3</span>
+                <label>ON: <input type="time" id="on3"></label>
+                <label>OFF: <input type="time" id="off3"></label>
+            </div>
+            <!-- Set 4 -->
+            <div class="timer-row">
+                <span>Set 4</span>
+                <label>ON: <input type="time" id="on4"></label>
+                <label>OFF: <input type="time" id="off4"></label>
+            </div>
+            
+            <button type="submit" class="btn btn-submit" id="btn-save" disabled>💾 Simpan Semua Jadwal</button>
+        </form>
+    </div>
+
     <script>
         // --- JAM DIGITAL ---
-         BarkahJam();
-        function BarkahJam() {
+        function updateJam() {
             const sekarang = new Date();
             const jam = String(sekarang.getHours()).padStart(2, '0');
             const menit = String(sekarang.getMinutes()).padStart(2, '0');
@@ -55,11 +97,12 @@
             const opsi = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
             document.getElementById('live-date').innerText = sekarang.toLocaleDateString('id-ID', opsi);
         }
-        setInterval(BarkahJam, 1000);
+        setInterval(updateJam, 1000);
+        updateJam();
 
         // --- MQTT CONFIG ---
         const topikKontrol = "nepanled1";
-        const topikStatus = "nepanled1/status"; // Topik umpan balik dari alat
+        const topikStatus = "nepanled1/status"; 
         const brokerUrl = "wss://broker.hivemq.com:8884/mqtt"; 
         
         const clientId = "client_gh_" + Math.random().toString(16).substr(2, 8);
@@ -70,21 +113,18 @@
         const statusDisplay = document.getElementById('status-display');
 
         client.on('connect', () => {
-            statusDisplay.innerText = "Terhubung! Menunggu status dari alat...";
+            statusDisplay.innerText = "Terhubung! Menyinkronkan alat...";
             statusDisplay.style.backgroundColor = "#d1ecf1";
             statusDisplay.style.color = "#0c5460";
             
             document.getElementById('btn-nyala').disabled = false;
             document.getElementById('btn-mati').disabled = false;
+            document.getElementById('btn-save').disabled = false;
             
-            // Dengarkan laporan status dari ESP8266
             client.subscribe(topikStatus);
-            
-            // Minta status terbaru ke alat saat web baru dibuka
             client.publish(topikKontrol, "STATUS_REQ"); 
         });
 
-        // MENERIMA UPDATE REAL-TIME DARI ESP8266
         client.on('message', (topic, message) => {
             if (topic === topikStatus) {
                 const statusAlat = message.toString();
@@ -94,30 +134,48 @@
                     dotElement.className = 'indicator-dot status-on';
                     textElement.innerText = "STATUS: ON";
                     textElement.style.color = "#28a745";
-                    statusDisplay.innerText = `Alat Melaporkan: NYALA pada jam ${jamSekarang}`;
+                    statusDisplay.innerText = `Lampu Menyala (Jam ${jamSekarang})`;
                     statusDisplay.style.backgroundColor = "#d4edda";
                     statusDisplay.style.color = "#155724";
                 } else if (statusAlat === 'OFF') {
                     dotElement.className = 'indicator-dot status-off';
                     textElement.innerText = "STATUS: OFF";
                     textElement.style.color = "#dc3545";
-                    statusDisplay.innerText = `Alat Melaporkan: MATI pada jam ${jamSekarang}`;
+                    statusDisplay.innerText = `Lampu Mati (Jam ${jamSekarang})`;
                     statusDisplay.style.backgroundColor = "#f8d7da";
                     statusDisplay.style.color = "#721c24";
                 }
             }
         });
 
-        client.on('error', (err) => {
-            statusDisplay.innerText = "Koneksi Bermasalah!";
-        });
-
-        // Mengirim perintah
         function kirimPerintah(perintah) {
             if (client.connected) {
-                statusDisplay.innerText = "Mengirim perintah...";
+                statusDisplay.innerText = "Memproses perintah manual...";
                 client.publish(topikKontrol, perintah);
             }
+        }
+
+        // --- FUNGSI MENGIRIM JADWAL TIMER KE BROKER ---
+        function simpanJadwal(event) {
+            event.preventDefault();
+            if (!client.connected) {
+                alert("Gagal, koneksi internet terputus!");
+                return;
+            }
+
+            // Ambil data dari semua kolom input waktu
+            let dataJadwal = "JADWAL";
+            for(let i=1; i<=4; i++) {
+                let waktuOn = document.getElementById(`on${i}`).value || "--:--";
+                let waktuOff = document.getElementById(`off${i}`).value || "--:--";
+                dataJadwal += `|${waktuOn}|${waktuOff}`;
+            }
+
+            // Mengirim data jadwal gabungan ke MQTT (Contoh format: JADWAL|07:00|08:00|--:--|--:--...)
+            client.publish(topikKontrol, dataJadwal, { qos: 1, retain: true });
+            statusDisplay.innerText = "Jadwal Baru Berhasil Dikirim ke Alat!";
+            statusDisplay.style.backgroundColor = "#d4edda";
+            statusDisplay.style.color = "#155724";
         }
     </script>
 </body>
