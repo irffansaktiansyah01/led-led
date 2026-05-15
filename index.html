@@ -3,26 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kontrol IoT Jarak Jauh + Realtime Clock</title>
-    <!-- Memanggil Library MQTT.js -->
+    <title>Kontrol IoT Jarak Jauh Realtime Feedback</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; padding: 10px; background-color: #f4f4f9; }
         h2 { color: #333; margin-bottom: 5px; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 400px; margin: auto; margin-bottom: 15px; text-align: center; }
-        
-        /* Gaya Jam Realtime */
         .clock-box { font-size: 28px; font-weight: bold; color: #2c3e50; background: #eec; padding: 10px; border-radius: 6px; margin: 10px 0; font-family: 'Courier New', Courier, monospace; border: 2px solid #bdc3c7; }
         .date-box { font-size: 14px; color: #7f8c8d; margin-bottom: 15px; }
-
-        /* Gaya Lampu Indikator */
         .indicator-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 15px 0; font-weight: bold; font-size: 18px; }
         .indicator-dot { width: 24px; height: 24px; border-radius: 50%; background-color: #7f8c8d; display: inline-block; box-shadow: 0 0 8px rgba(0,0,0,0.2); transition: background-color 0.3s ease, box-shadow 0.3s ease; }
-        
-        /* Warna Status Indikator */
         .status-on { background-color: #28a745; box-shadow: 0 0 15px #28a745; }
         .status-off { background-color: #dc3545; box-shadow: 0 0 15px #dc3545; }
-
         .btn { display: inline-block; width: 46%; padding: 14px; margin: 5px 2%; font-size: 16px; font-weight: bold; text-align: center; text-decoration: none; border-radius: 5px; color: white; cursor: pointer; border: none; }
         .btn-on { background-color: #28a745; }
         .btn-off { background-color: #dc3545; }
@@ -34,15 +26,13 @@
 
     <div class="card">
         <h2>🌐 Kontrol Jarak Jauh (MQTT)</h2>
-        <!-- WAKTU REALTIME -->
         <div class="clock-box" id="live-clock">00:00:00</div>
         <div class="date-box" id="live-date">Memuat tanggal...</div>
         <hr>
         
-        <!-- INDIKATOR LAMPU VISUAL -->
         <div class="indicator-container">
             <span id="lamp-dot" class="indicator-dot"></span>
-            <span id="lamp-text">STATUS: MENGHUBUNGKAN...</span>
+            <span id="lamp-text">STATUS: SINKRONISASI...</span>
         </div>
 
         <div class="status-box" id="status-display">Menghubungkan ke Broker HiveMQ...</div>
@@ -54,26 +44,22 @@
     </div>
 
     <script>
-        // --- JALUR JAM REALTIME DIGITAL ---
-        function updateWaktu() {
+        // --- JAM DIGITAL ---
+         BarkahJam();
+        function BarkahJam() {
             const sekarang = new Date();
-            
-            // Format Jam (HH:MM:SS)
             const jam = String(sekarang.getHours()).padStart(2, '0');
             const menit = String(sekarang.getMinutes()).padStart(2, '0');
             const detik = String(sekarang.getSeconds()).padStart(2, '0');
             document.getElementById('live-clock').innerText = `${jam}:${menit}:${detik}`;
-            
-            // Format Tanggal
             const opsi = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
             document.getElementById('live-date').innerText = sekarang.toLocaleDateString('id-ID', opsi);
         }
-        setInterval(updateWaktu, 1000); // Update setiap 1 detik
-        updateWaktu(); // Jalankan sekali di awal
+        setInterval(BarkahJam, 1000);
 
-        // --- JALUR MQTT KONTROL ---
-        const topik = "nepanled1";
-        // Diperbarui menggunakan WSS (Port 8884) agar lolos blokir HTTPS GitHub Pages
+        // --- MQTT CONFIG ---
+        const topikKontrol = "nepanled1";
+        const topikStatus = "nepanled1/status"; // Topik umpan balik dari alat
         const brokerUrl = "wss://broker.hivemq.com:8884/mqtt"; 
         
         const clientId = "client_gh_" + Math.random().toString(16).substr(2, 8);
@@ -84,45 +70,53 @@
         const statusDisplay = document.getElementById('status-display');
 
         client.on('connect', () => {
-            statusDisplay.innerText = "Terhubung ke Internet (HiveMQ)!";
-            statusDisplay.style.backgroundColor = "#d4edda";
-            statusDisplay.style.color = "#155724";
+            statusDisplay.innerText = "Terhubung! Menunggu status dari alat...";
+            statusDisplay.style.backgroundColor = "#d1ecf1";
+            statusDisplay.style.color = "#0c5460";
             
             document.getElementById('btn-nyala').disabled = false;
             document.getElementById('btn-mati').disabled = false;
             
-            dotElement.className = 'indicator-dot status-off';
-            textElement.innerText = "STATUS: OFF";
-            textElement.style.color = "#dc3545";
+            // Dengarkan laporan status dari ESP8266
+            client.subscribe(topikStatus);
+            
+            // Minta status terbaru ke alat saat web baru dibuka
+            client.publish(topikKontrol, "STATUS_REQ"); 
+        });
+
+        // MENERIMA UPDATE REAL-TIME DARI ESP8266
+        client.on('message', (topic, message) => {
+            if (topic === topikStatus) {
+                const statusAlat = message.toString();
+                const jamSekarang = document.getElementById('live-clock').innerText;
+                
+                if (statusAlat === 'ON') {
+                    dotElement.className = 'indicator-dot status-on';
+                    textElement.innerText = "STATUS: ON";
+                    textElement.style.color = "#28a745";
+                    statusDisplay.innerText = `Alat Melaporkan: NYALA pada jam ${jamSekarang}`;
+                    statusDisplay.style.backgroundColor = "#d4edda";
+                    statusDisplay.style.color = "#155724";
+                } else if (statusAlat === 'OFF') {
+                    dotElement.className = 'indicator-dot status-off';
+                    textElement.innerText = "STATUS: OFF";
+                    textElement.style.color = "#dc3545";
+                    statusDisplay.innerText = `Alat Melaporkan: MATI pada jam ${jamSekarang}`;
+                    statusDisplay.style.backgroundColor = "#f8d7da";
+                    statusDisplay.style.color = "#721c24";
+                }
+            }
         });
 
         client.on('error', (err) => {
-            statusDisplay.innerText = "Gagal koneksi secure ke Broker!";
-            statusDisplay.style.backgroundColor = "#f8d7da";
-            statusDisplay.style.color = "#721c24";
+            statusDisplay.innerText = "Koneksi Bermasalah!";
         });
 
+        // Mengirim perintah
         function kirimPerintah(perintah) {
             if (client.connected) {
-                client.publish(topik, perintah, { qos: 0, retain: false }, (err) => {
-                    if (!err) {
-                        statusDisplay.innerText = `Perintah ${perintah} Terkirim Jam ${document.getElementById('live-clock').innerText}`;
-                        
-                        if (perintah === 'ON') {
-                            dotElement.className = 'indicator-dot status-on';
-                            textElement.innerText = "STATUS: ON";
-                            textElement.style.color = "#28a745";
-                        } else {
-                            dotElement.className = 'indicator-dot status-off';
-                            textElement.innerText = "STATUS: OFF";
-                            textElement.style.color = "#dc3545";
-                        }
-                    } else {
-                        statusDisplay.innerText = "Gagal mengirim data.";
-                    }
-                });
-            } else {
-                statusDisplay.innerText = "Koneksi terputus!";
+                statusDisplay.innerText = "Mengirim perintah...";
+                client.publish(topikKontrol, perintah);
             }
         }
     </script>
