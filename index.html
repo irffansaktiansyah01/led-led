@@ -3,188 +3,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IoT Jarak Jauh + Sinkronisasi Jadwal Realtime</title>
+    <title>9-Channel IoT Smart Controller</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; padding: 10px; background-color: #f4f4f9; }
-        h2, h3 { color: #333; margin: 5px 0; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 440px; margin: auto; margin-bottom: 15px; text-align: center; }
-        .clock-box { font-size: 28px; font-weight: bold; color: #2c3e50; background: #eec; padding: 10px; border-radius: 6px; margin: 10px 0; font-family: 'Courier New', Courier, monospace; border: 2px solid #bdc3c7; }
-        .date-box { font-size: 14px; color: #7f8c8d; margin-bottom: 15px; }
-        .indicator-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 15px 0; font-weight: bold; font-size: 18px; }
-        .indicator-dot { width: 24px; height: 24px; border-radius: 50%; background-color: #7f8c8d; display: inline-block; box-shadow: 0 0 8px rgba(0,0,0,0.2); transition: background-color 0.3s ease, box-shadow 0.3s ease; }
-        .status-on { background-color: #28a745; box-shadow: 0 0 15px #28a745; }
-        .status-off { background-color: #dc3545; box-shadow: 0 0 15px #dc3545; }
-        .btn { display: inline-block; width: 46%; padding: 14px; margin: 5px 2%; font-size: 16px; font-weight: bold; text-align: center; text-decoration: none; border-radius: 5px; color: white; cursor: pointer; border: none; }
-        .btn-on { background-color: #28a745; }
-        .btn-off { background-color: #dc3545; }
-        .btn-submit { background-color: #007bff; width: 96%; margin-top: 15px; }
-        .btn:hover { opacity: 0.9; }
-        .status-box { padding: 15px; border-radius: 6px; font-weight: bold; margin-bottom: 15px; text-align: center; background-color: #e2e3e5; color: #383d41; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        body { background: linear-gradient(135deg, #0f172a 0%, #020617 100%); color: #f8fafc; padding: 15px; min-height: 100vh; }
+        .container { max-width: 700px; margin: auto; }
         
-        .timer-row { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #007bff; }
-        .timer-row span { font-weight: bold; font-size: 14px; }
-        .timer-row input[type="time"] { padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        .header-card { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.05); padding: 20px; border-radius: 16px; text-align: center; margin-bottom: 20px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3); }
+        h1 { font-size: 24px; font-weight: 800; background: linear-gradient(to right, #00f2fe, #4facfe); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .clock { font-size: 28px; font-weight: 700; color: #00f2fe; margin: 5px 0; font-family: monospace; }
+        
+        /* Layout Grid untuk 9 Switch */
+        .grid-container { display: grid; grid-template-columns: 1fr; gap: 15px; }
+        @media(min-width: 600px) { .grid-container { grid-template-columns: repeat(2, 1fr); } }
+        
+        .switch-card { background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 15px; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.3s ease; }
+        .switch-card:hover { border-color: #38bdf8; transform: translateY(-2px); }
+        
+        .switch-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .switch-title { font-weight: 700; font-size: 15px; color: #e2e8f0; display: flex; align-items: center; gap: 8px; }
+        
+        /* Indikator Bulat Mini */
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #64748b; display: inline-block; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+        .dot-on { background: #10b981; box-shadow: 0 0 10px #10b981; }
+        
+        /* Tombol Utama ON/OFF */
+        .control-row { display: flex; gap: 8px; margin-bottom: 12px; }
+        .btn-sw { flex: 1; padding: 10px; font-size: 13px; font-weight: 700; border: none; border-radius: 8px; cursor: pointer; color: white; transition: all 0.2s; }
+        .btn-sw-on { background: #10b981; box-shadow: 0 4px 10px rgba(16,185,129,0.2); }
+        .btn-sw-off { background: #ef4444; box-shadow: 0 4px 10px rgba(239,68,68,0.2); }
+        .btn-sw:hover { opacity: 0.9; transform: scale(1.02); }
+        
+        /* Area Pengaturan Waktu di Samping/Bawah Switch */
+        .timer-zone { background: #0f172a; padding: 10px; border-radius: 10px; border: 1px solid #1e293b; }
+        .timer-inputs { display: flex; justify-content: space-between; gap: 5px; margin-bottom: 8px; }
+        .timer-inputs label { font-size: 11px; color: #94a3b8; display: flex; flex-direction: column; width: 48%; text-align: left; }
+        .timer-inputs input[type="time"] { padding: 5px; border: 1px solid #334155; background: #1e293b; color: white; border-radius: 6px; font-size: 12px; margin-top: 3px; outline: none; }
+        
+        .btn-save-time { width: 100%; padding: 6px; font-size: 11px; font-weight: 700; background: linear-gradient(to right, #00f2fe, #4facfe); color: #0f172a; border: none; border-radius: 6px; cursor: pointer; }
+        
+        .global-info { font-size: 12px; color: #64748b; text-align: center; margin-top: 20px; }
     </style>
 </head>
 <body>
 
-    <div class="card">
-        <h2>🌐 Kontrol Jarak Jauh (MQTT)</h2>
-        <div class="clock-box" id="live-clock">00:00:00</div>
-        <div class="date-box" id="live-date">Memuat tanggal...</div>
-        <hr>
-        
-        <div class="indicator-container">
-            <span id="lamp-dot" class="indicator-dot"></span>
-            <span id="lamp-text">STATUS: SINKRONISASI...</span>
-        </div>
-
-        <div class="status-box" id="status-display">Menghubungkan ke Broker HiveMQ...</div>
-        
-        <div style="text-align: center;">
-            <button onclick="kirimPerintah('ON')" class="btn btn-on" id="btn-nyala" disabled>NYALAKAN</button>
-            <button onclick="kirimPerintah('OFF')" class="btn btn-off" id="btn-mati" disabled>MATIKAN</button>
-        </div>
+<div class="container">
+    <div class="header-card">
+        <h1>⚡ NEPAN 9-CHANNEL COMMAND CENTER</h1>
+        <div class="clock" id="live-clock">00:00:00</div>
+        <div id="status-display" style="font-size: 13px; color: #94a3b8;">Menghubungkan ke Broker HiveMQ...</div>
     </div>
 
-    <div class="card">
-        <h3>⚙️ Pengaturan 4 Set Jadwal Lampu</h3>
-        <p style="font-size: 12px; color: #666; margin-top: 0;" id="sync-text">Sinkronisasi jadwal dengan alat...</p>
-        <hr>
+    <div class="grid-container" id="switches-grid"></div>
+    
+    <div class="global-info">Sistem Sinkronisasi Waktu Nyata MQTT v3.0</div>
+</div>
+
+<script>
+    // Penamaan alias untuk Pin agar lebih keren saat dibaca di web
+    const pinNames = { 0:"SWITCH 1 (D0)", 1:"SWITCH 2 (D1)", 2:"SWITCH 3 (D2)", 3:"SWITCH 4 (D3)", 4:"SWITCH 5 (D4)", 5:"SWITCH 6 (D5)", 6:"SWITCH 7 (D6)", 7:"SWITCH 8 (D7)", 8:"SWITCH 9 (D8)" };
+
+    // Generate HTML untuk 9 Switch secara otomatis agar skrip bersih
+    const grid = document.getElementById('switches-grid');
+    for(let i=0; i<=8; i++) {
+        grid.innerHTML += `
+            <div class="switch-card">
+                <div class="switch-header">
+                    <div class="switch-title">
+                        <span class="status-dot" id="dot-${i}"></span>
+                        ${pinNames[i]}
+                    </div>
+                </div>
+                <div class="control-row">
+                    <button class="btn-sw btn-sw-on" onclick="kontrolManual(${i}, 'ON')">ON</button>
+                    <button class="btn-sw btn-sw-off" onclick="kontrolManual(${i}, 'OFF')">OFF</button>
+                </div>
+                <div class="timer-zone">
+                    <div class="timer-inputs">
+                        <label>JAM ON <input type="time" id="on-${i}"></label>
+                        <label>JAM OFF <input type="time" id="off-${i}"></label>
+                    </div>
+                    <button class="btn-save-time" onclick="simpanTimerAlat(${i})">💾 SET JADWAL</button>
+                </div>
+            </div>
+        `;
+    }
+
+    // --- JAM DIGITAL ---
+    setInterval(() => {
+        const skrg = new Date();
+        document.getElementById('live-clock').innerText = skrg.toLocaleTimeString('id-ID');
+    }, 1000);
+
+    // --- MQTT SETTING ---
+    const topikKontrol = "nepanled9/cmd";
+    const topikStatus = "nepanled9/status";
+    const topikJadwal = "nepanled9/jadwal";
+    
+    const client = mqtt.connect("wss://broker.hivemq.com:8884/mqtt", { clientId: "web_9ch_" + Math.random().toString(16).substr(2, 8) });
+
+    client.on('connect', () => {
+        document.getElementById('status-display').innerText = "✓ Terhubung secara Realtime dengan Alat";
+        document.getElementById('status-display').style.color = "#10b981";
+        client.subscribe(topikStatus);
+        client.subscribe(topikJadwal);
+        client.publish(topikKontrol, "REQ_ALL"); // Minta status & jadwal aktual ke ESP
+    });
+
+    // Kirim Perintah Hidup/Mati Manual per Switch
+    function kontrolManual(idSwitch, aksi) {
+        if(client.connected) {
+            // Format: SW|ID|AKSI (Contoh: SW|0|ON)
+            client.publish(topikKontrol, `SW|${idSwitch}|${aksi}`);
+        }
+    }
+
+    // Kirim Perintah Seting Waktu per Switch
+    function simpanTimerAlat(idSwitch) {
+        if(!client.connected) return;
+        let tOn = document.getElementById(`on-${idSwitch}`).value || "--:--";
+        let tOff = document.getElementById(`off-${idSwitch}`).value || "--:--";
         
-        <form id="timer-form" onsubmit="simpanJadwal(event)">
-            <div class="timer-row">
-                <span>Set 1</span>
-                <label>ON: <input type="time" id="on1"></label>
-                <label>OFF: <input type="time" id="off1"></label>
-            </div>
-            <div class="timer-row">
-                <span>Set 2</span>
-                <label>ON: <input type="time" id="on2"></label>
-                <label>OFF: <input type="time" id="off2"></label>
-            </div>
-            <div class="timer-row">
-                <span>Set 3</span>
-                <label>ON: <input type="time" id="on3"></label>
-                <label>OFF: <input type="time" id="off3"></label>
-            </div>
-            <div class="timer-row">
-                <span>Set 4</span>
-                <label>ON: <input type="time" id="on4"></label>
-                <label>OFF: <input type="time" id="off4"></label>
-            </div>
-            
-            <button type="submit" class="btn btn-submit" id="btn-save" disabled>💾 Simpan Semua Jadwal</button>
-        </form>
-    </div>
+        // Format: TM|ID|JAM_ON|JAM_OFF (Contoh: TM|0|18:00|05:00)
+        client.publish(topikKontrol, `TM|${idSwitch}|${tOn}|${tOff}`, { qos: 1, retain: true });
+    }
 
-    <script>
-        // --- JAM DIGITAL ---
-        function updateJam() {
-            const sekarang = new Date();
-            const jam = String(sekarang.getHours()).padStart(2, '0');
-            const menit = String(sekarang.getMinutes()).padStart(2, '0');
-            const detik = String(sekarang.getSeconds()).padStart(2, '0');
-            document.getElementById('live-clock').innerText = `${jam}:${menit}:${detik}`;
-            const opsi = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            document.getElementById('live-date').innerText = Clinical= sekarang.toLocaleDateString('id-ID', opsi);
-        }
-        setInterval(updateJam, 1000);
-        updateJam();
+    // Menerima data kiriman balik dari ESP8266
+    client.on('message', (topic, payload) => {
+        const pesan = payload.toString();
+        const bagian = pesan.split("|");
 
-        // --- MQTT CONFIG ---
-        const topikKontrol = "nepanled1";
-        const topikStatus = "nepanled1/status"; 
-        const topikJadwalStatus = "nepanled1/jadwal_status"; // Topik khusus kiriman jadwal dari ESP
-        
-        const brokerUrl = "wss://broker.hivemq.com:8884/mqtt"; 
-        const clientId = "client_gh_" + Math.random().toString(16).substr(2, 8);
-        const client = mqtt.connect(brokerUrl, { clientId: clientId });
-
-        const dotElement = document.getElementById('lamp-dot');
-        const textElement = document.getElementById('lamp-text');
-        const statusDisplay = document.getElementById('status-display');
-
-        client.on('connect', () => {
-            statusDisplay.innerText = "Terhubung! Mengambil data realtime...";
-            statusDisplay.style.backgroundColor = "#d1ecf1";
-            statusDisplay.style.color = "#0c5460";
-            
-            document.getElementById('btn-nyala').disabled = false;
-            document.getElementById('btn-mati').disabled = false;
-            document.getElementById('btn-save').disabled = false;
-            
-            // Subscribe ke status lampu dan status jadwal dari alat
-            client.subscribe(topikStatus);
-            client.subscribe(topikJadwalStatus);
-            
-            // Minta data terbaru ke ESP8266
-            client.publish(topikKontrol, "STATUS_REQ"); 
-        });
-
-        client.on('message', (topic, message) => {
-            const pesan = message.toString();
-            
-            // 1. Menerima Status Lampu Realtime
-            if (topic === topikStatus) {
-                const jamSekarang = document.getElementById('live-clock').innerText;
-                if (pesan === 'ON') {
-                    dotElement.className = 'indicator-dot status-on';
-                    textElement.innerText = "STATUS: ON";
-                    textElement.style.color = "#28a745";
-                    statusDisplay.innerText = `Lampu Menyala (Jam ${jamSekarang})`;
-                    statusDisplay.style.backgroundColor = "#d4edda";
-                    statusDisplay.style.color = "#155724";
-                } else if (pesan === 'OFF') {
-                    dotElement.className = 'indicator-dot status-off';
-                    textElement.innerText = "STATUS: OFF";
-                    textElement.style.color = "#dc3545";
-                    statusDisplay.innerText = `Lampu Mati (Jam ${jamSekarang})`;
-                    statusDisplay.style.backgroundColor = "#f8d7da";
-                    statusDisplay.style.color = "#721c24";
-                }
-            }
-            
-            // 2. Menerima Pengaturan Jadwal Realtime Aktif dari Alat (Mengisi Form Otomatis)
-            if (topic === topikJadwalStatus && pesan.startsWith("JADWAL")) {
-                const bagian = pesan.split("|"); // Bongkar data teks format JADWAL|on1|off1...
-                let indexData = 1;
-                
-                for(let i = 1; i <= 4; i++) {
-                    const isiOn = bagian[indexData++];
-                    const isiOff = bagian[indexData++];
-                    
-                    document.getElementById(`on${i}`).value = (isiOn === "--:--") ? "" : isiOn;
-                    document.getElementById(`off${i}`).value = (isiOff === "--:--") ? "" : isiOff;
-                }
-                document.getElementById("sync-text").innerText = "⚙️ Jadwal Sinkron 100% dengan Alat!";
-                document.getElementById("sync-text").style.color = "#28a745";
-            }
-        });
-
-        function kirimPerintah(perintah) {
-            if (client.connected) {
-                client.publish(topikKontrol, perintah);
-            }
+        // Proses Status On/Off Saklar
+        if (topic === topikStatus && bagian[0] === "STAT") {
+            let id = parseInt(bagian[1]);
+            let stat = bagian[2];
+            let dot = document.getElementById(`dot-${id}`);
+            if (stat === "ON") dot.className = "status-dot dot-on";
+            else dot.className = "status-dot";
         }
 
-        function simpanJadwal(event) {
-            event.preventDefault();
-            if (!client.connected) return;
-
-            let dataJadwal = "JADWAL";
-            for(let i = 1; i <= 4; i++) {
-                let waktuOn = document.getElementById(`on${i}`).value || "--:--";
-                let waktuOff = document.getElementById(`off${i}`).value || "--:--";
-                dataJadwal += `|${waktuOn}|${waktuOff}`;
-            }
-
-            // Kirim jadwal baru ke ESP, pakai retain agar tersimpan di broker cloud
-            client.publish(topikKontrol, dataJadwal, { qos: 1, retain: true });
-            document.getElementById("sync-text").innerText = "Mengirim jadwal baru...";
-            document.getElementById("sync-text").style.color = "#007bff";
+        // Proses Sinkronisasi Waktu Jadwal ke Kolom Input Web
+        if (topic === topikJadwal && bagian[0] === "JAD") {
+            let id = parseInt(bagian[1]);
+            let jOn = bagian[2];
+            let jOff = bagian[3];
+            document.getElementById(`on-${id}`).value = (jOn === "--:--") ? "" : jOn;
+            document.getElementById(`off-${id}`).value = (jOff === "--:--") ? "" : jOff;
         }
-    </script>
+    });
+</script>
 </body>
 </html>
